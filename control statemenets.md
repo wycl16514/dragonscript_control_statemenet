@@ -405,4 +405,63 @@ and we can see the following tree structure:
 
 ![截屏2024-06-01 13 55 47](https://github.com/wycl16514/dragonscript_control_statemenet/assets/7506958/c452bda4-fa1b-4186-9d72-7106f480719c)
 
-Then run the test again and make sure it can be passed now
+Then run the test again and make sure it can be passed now. 
+
+Let's see how to evaluate the two operators, for an expression that is composition of many expressions that are chained by and 
+operator, it will evaluate to the first expression that is not truth otherwise it will evaluate to the result of last 
+expression, let's check the test case for this: 
+```js
+it("should evaluate to the first expression of false otherwise evaluate to the last expression for and", () => {
+        let code = `
+        var a = 1;
+        var b = 2;
+        var c = 3;
+        if (a > 0 and b > 1 and c > 4) {
+            print(1);
+        } else {
+            print(2)
+        }
+        `
+
+        let root = createParsingTree(code)
+        let intepreter = new Intepreter()
+        root.accept(intepreter)
+        console = intepreter.runTime.console
+        expect(console.length).toEqual(1)
+        expect(console[0]).toEqual(2)
+
+        code = `
+        var a = 1;
+        var b = 2;
+        var c = 3;
+        if (a > 0 and b > 1 and c > 2) {
+            print(1);
+        } else {
+            print(2)
+        }
+        `
+
+        root = createParsingTree(code)
+        intepreter = new Intepreter()
+        root.accept(intepreter)
+        console = intepreter.runTime.console
+        expect(console.length).toEqual(1)
+        expect(console[0]).toEqual(1)
+    })
+```
+Run the case above and make sure it fails, then we go to intepreter and add code to handle it as following:
+```js
+ visitLogicAndNode = (parent, node) => {
+        for (const child of node.children) {
+            child.accept(this)
+            node.evalRes = child.evalRes
+            //if one return false then give up the following
+            if (!this.isEvalToTrue(child.evalRes)) {
+                break
+            }
+
+        }
+        this.attachEvalResult(parent, node)
+    }
+```
+Now run the code and make sure the test case can be passed.
