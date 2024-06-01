@@ -245,11 +245,11 @@ is operator and has higer priority for operator "or", run the test and make sure
 Now we define the grammar rule for logic operator "or" and "and" as following:
 
 ```js
-    assignment -> IDENTIFIER EQUAL assign_to | logic_or
+  assignment -> IDENTIFIER EQUAL assign_to | logic_or
     logic_or -> logic_and logic_or_recursive
-    logic_or_recursive -> OR logic_and | EPSILON
+    logic_or_recursive -> OR logic_and logic_or_recursive| EPSILON
     logic_and -> equality logic_and_recursive
-    logic_and_recurisve -> AND equaliaty | EPSILON
+    logic_and_recurisve -> AND equaliaty logic_and_recurisve| EPSILON
 ```
 From the aboved grammar rules, the assignment has two forms, one is assign vaule to a variable like "b=2;" the other is chainning
 expression together with "or" or "and" keyword like "a > 0 or b < 2"
