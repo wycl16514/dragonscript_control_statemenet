@@ -464,4 +464,63 @@ Run the case above and make sure it fails, then we go to intepreter and add code
         this.attachEvalResult(parent, node)
     }
 ```
-Now run the code and make sure the test case can be passed.
+Now run the code and make sure the test case can be passed. To evaluate expressions that are chaining together by using or,
+We should evaluate to the first expression that is evaluated result is truth otherwise we take the evaluation result of the
+last expression as the final result , let's see the test case first:
+```js
+it("should evaluate to the first truth expression otherwise evaluate the last expression of or", () => {
+        let code = `
+        var a = 1;
+        var b = 2;
+        var c = 3;
+        if (a < 0 or b < 1 or c < 3) {
+            print(1);
+        } else {
+            print(2);
+        }
+        `
+
+        let root = createParsingTree(code)
+        let intepreter = new Intepreter()
+        root.accept(intepreter)
+        console = intepreter.runTime.console
+        expect(console.length).toEqual(1)
+        expect(console[0]).toEqual(2)
+
+        code = `
+        var a = 1;
+        var b = 2;
+        var c = 3;
+        if (a < 0 or b == 2 or c < 3) {
+            print(3);
+        } else {
+            print(2);
+        }
+        `
+
+        root = createParsingTree(code)
+        intepreter = new Intepreter()
+        root.accept(intepreter)
+        console = intepreter.runTime.console
+        expect(console.length).toEqual(1)
+        expect(console[0]).toEqual(3)
+    })
+```
+Run the case aboved and make sure it fail, then we add the following code to handle it in intepreter.js:
+```js
+visitLogicOrNode = (parent, node) => {
+        for (const child of node.children) {
+            child.accept(this)
+            node.evalRes = child.evalRes
+            //if one return true then give up the following
+            if (this.isEvalToTrue(child.evalRes)) {
+                break
+            }
+
+        }
+        this.attachEvalResult(parent, node)
+    }
+```
+In the code aboved, we evaluate the each child , when we get the first child that it can evaluated to truth, then we take its
+evaluation result as the result for the or expression, otherwise we will return the result of last expression as the result of
+the expression. After adding the code aboved, run the test again and make sure it can passed
