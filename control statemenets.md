@@ -221,4 +221,188 @@ In the visiIfStmtNode method, we first get its first child which is an expressio
 method isEvalToTrue), then we evaluate its second child which is the code block to execute when the if condition is true. If the condition evaluate to false, we check whether there is a third child, if it is, then
 it is a block node for the else case, and we evaluate it.
 
-After completing the code above, run the test and make sure it passed.
+After completing the code above, run the test and make sure it passed. There are somethings we need to think for the condition
+of if else statement,we can use "or" and "and" to combie several conditions into one, let's check the test case first:
+```js
+it("should enable to parse logic operator or and", () => {
+        let code = `
+        var a = 1;
+        var b = 2;
+        var c = 3;
+        var d = a>0 and b > 1 or c != 0;`
+
+        let codeToParse = () => {
+            createParsingTree(code)
+        }
+
+        expect(codeToParse).not.toThrow();
+    })
+```
+As in above case, we need to decide the order for logic operator, how can we evaluate i(a>0 and b > 1 or c!=0)? The first way is
+if ((a>0 and b > 1) or c !=0), the second way is if (a > 0 and (b>1 or c!=0)), which one we choose? we choose the first one that
+is operator and has higer priority for operator "or", run the test and make sure it fails.
+
+Now we define the grammar rule for logic operator "or" and "and" as following:
+
+```js
+    assignment -> IDENTIFIER EQUAL assign_to | logic_or
+    logic_or -> logic_and logic_or_recursive
+    logic_or_recursive -> OR logic_and | EPSILON
+    logic_and -> equality logic_and_recursive
+    logic_and_recurisve -> AND equaliaty | EPSILON
+```
+From the aboved grammar rules, the assignment has two forms, one is assign vaule to a variable like "b=2;" the other is chainning
+expression together with "or" or "and" keyword like "a > 0 or b < 2"
+
+And the operator "and" has higher priority over "or" because the rule for "and" is lower than the rule for "or". 
+And also notice that the rule for "or" and "and" is repetive, that is we can chain many expression with many "or" or
+"and" operator like "a > 0 or b > 2 or c > 3"
+
+Let's add code to enable parser to understand the "or" and "and" logic operator , first we add the "or" as a keyword in token.js:
+```js
+ initKeywords = () => {
+    this.key_words = {
+        "let": Scanner.LET,
+        "and": Scanner.AND,
+        "or": Scanner.OR,
+             ...
+         }
+    }
+       
+```
+Then we add code to implement the grammar rules at the parser as following:
+```js
+ /*
+    assignment -> IDENTIFIER EQUAL assign_to | logic_or
+    logic_or -> logic_and logic_or_recursive
+    logic_or_recursive -> OR logic_and | EPSILON
+    logic_and -> equality logic_and_recursive
+    logic_and_recurisve -> AND equaliaty | EPSILON
+    */
+
+    assignment = (parentNode) => {
+        /*
+        check logic_or , the rule for logic_or can derivate to equality
+        therefore we can replace the equality with the logic_or here
+        */
+        //this.equality(parentNode)
+        this.logicOr(parentNode)
+        if (this.matchTokens([Scanner.EQUAL])) {
+            //assign_to -> EQUAL expression
+            this.previous()
+            const token = this.matchTokens([Scanner.IDENTIFIER])
+            if (token) {
+                let assignmentNode = this.createParseTreeNode(parentNode, "assignment")
+                assignmentNode.attributes = {
+                    value: token.lexeme
+                }
+                //over the identifier
+                this.advance()
+                //over the equal sign
+                this.advance()
+                const curToken = this.getToken()
+                console.log(curToken)
+                this.expression(assignmentNode)
+                parentNode.children.push(assignmentNode)
+            } else {
+                throw new Error("can only assign to defined identifier")
+            }
+        } else {
+            return
+        }
+    }
+
+    logicOr = (parent) => {
+        /*
+         logic_or -> logic_and logic_or_recursive
+         logic_or_recursive -> OR logic_and | EPSILON
+        */
+        const logicOrNode = this.createParseTreeNode(parent, "logic_or")
+        parent.children.push(logicOrNode)
+        this.logicAnd(logicOrNode)
+        while (true) {
+            //repeat if we check or keyword here
+            let token = this.matchTokens([Scanner.OR])
+            if (!token) {
+                break
+            }
+            this.advance()
+            this.logicAnd(logicOrNode)
+        }
+    }
+
+    logicAnd = (parent) => {
+        /*
+         logic_and -> equality logic_and_recursive
+         logic_and_recurisve -> AND equaliaty | EPSILON
+        */
+        const logicAndNode = this.createParseTreeNode(parent, "logic_and")
+        parent.children.push(logicAndNode)
+        this.equality(logicAndNode)
+        while (true) {
+            //repeat when we see the "and" keyword
+            let token = this.matchTokens([Scanner.AND])
+            if (!token) {
+                break
+            }
+            this.advance()
+            this.equality(logicAndNode)
+        }
+    }
+
+   addAcceptForNode = (parent, node) => {
+        switch (node.name) {
+        ...
+         case "logic_or":
+                node.accept = (visitor) => {
+                    visitor.visitLogicOrNode(parent, node)
+                }
+                break
+            case "logic_and":
+                node.accept = (visitor) => {
+                    visitor.visitLogicAndNode(parent, node)
+                }
+                break
+          ...
+        }
+        ...
+    }
+```
+It is a little tricky in the parsing of assignment, originally when we go into assigment, we first do the equality parsing,
+but this time we do the logic_or rule first, that's because we can goto the equality rule from the logic_or rule as :
+
+logic_or -> logic_and -> equality
+
+Since we have add two new nodes in the parsing tree, we need to add its vistor method for tree adjustor as following:
+```js
+  visitLogicOrNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+
+    visitLogicAndNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+
+```
+And add the same visitor method at intepreter as following:
+```js
+  visitLogicOrNode = (parent, node) => {
+        this.visitChildren(node)
+        this.attachEvalResult(parent, node)
+    }
+
+    visitLogicAndNode = (parent, node) => {
+        this.visitChildren(node)
+        this.attachEvalResult(parent, node)
+    }
+```
+
+After adding above code, let's check the parsing tree for command:
+
+recursiveparsetree a > 0 or b < 1 and c > 2;
+
+and we can see the following tree structure:
+
+![截屏2024-06-01 13 55 47](https://github.com/wycl16514/dragonscript_control_statemenet/assets/7506958/c452bda4-fa1b-4186-9d72-7106f480719c)
+
+Then run the test again and make sure it can be passed now
