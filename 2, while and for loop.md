@@ -108,4 +108,21 @@ it("should evaluate the while loop correctly", () => {
         expect(console[2]).toEqual(1)
     })
 ```
-Run the test case aboved and make sure it fails.
+Run the test case aboved and make sure it fails. Now we add code to intepreter to make it passed:
+```js
+ visitWhileNode = (parent, node) => {
+        const condition = node.children[0]
+        const body = node.children[1]
+        while (true) {
+            condition.accept(this)
+            if (!this.isEvalToTrue(condition.evalRes)) {
+                break
+            }
+
+            body.accept(this)
+            node.evalRes = body.evalRes
+        }
+        this.attachEvalResult(parent, node)
+    }
+```
+Run the test again and make sure it passed after adding the above code
