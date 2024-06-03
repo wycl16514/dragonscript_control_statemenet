@@ -344,4 +344,70 @@ Then we get the parsing tree as following:
 ![截屏2024-06-03 13 42 23](https://github.com/wycl16514/dragonscript_control_statemenet/assets/7506958/95836d85-e471-4be9-a900-1d42601f60d1)
 
 Pay attention to the parsing tree aboved, the first child of the for node is for_init, the second is for_checking, the third is for_changing, and the forth is the block for the code of the for loop,
-we will use this info to do the evaluation. Runt the test again and make sure the new case can be passed.
+we will use this info to do the evaluation. Runt the test again and make sure the new case can be passed. Now let's add the test case of for loop evaluation as following:
+```js
+it("should evaluate the for loop correctly", () => {
+        let code = `
+        for(var i = 0; i < 3; i=i+1) {
+            print(i);
+        }
+        `
+        let root = createParsingTree(code)
+        let intepreter = new Intepreter()
+        root.accept(intepreter)
+        let console = intepreter.runTime.console
+        expect(console.length).toEqual(3)
+        expect(console[0]).toEqual(0)
+        expect(console[1]).toEqual(1)
+        expect(console[2]).toEqual(2)
+    })
+```
+Run the test and make sure it fails, then we goto the intepreter to add code:
+```js
+visitForNode = (parent, node) => {
+        let forInit = null
+        let forChecking = null
+        let forChanging = null
+        let forBlock = null
+        for (const child of node.children) {
+            switch (child.name) {
+                case "for_init":
+                    forInit = child
+                    break
+                case "for_checking":
+                    forChecking = child
+                    break
+                case "for_changing":
+                    forChanging = child
+                    break
+                case "block":
+                    forBlock = child
+                    break
+            }
+        }
+
+        if (forInit) {
+            //init the condition for the for loop
+            forInit.accept(this)
+        }
+
+        while (true) {
+            if (forChecking) {
+                forChecking.accept(this)
+            }
+            if (!this.isEvalToTrue(forChecking.evalRes)) {
+                break
+            }
+
+            forBlock.accept(this)
+            node.evalRes = forBlock.evalRes
+
+            if (forChanging) {
+                forChanging.accept(this)
+            }
+        }
+
+        this.attachEvalResult(parent, node)
+    }
+```
+After adding above code, run the test again and make sure it passed.
