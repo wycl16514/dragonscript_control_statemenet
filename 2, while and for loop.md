@@ -125,4 +125,223 @@ Run the test case aboved and make sure it fails. Now we add code to intepreter t
         this.attachEvalResult(parent, node)
     }
 ```
-Run the test again and make sure it passed after adding the above code
+Run the test again and make sure it passed after adding the above code. Let's see how we can parse and evaluate the for loop, we still add the test case first:
+```js
+ it("should enable the parsing of for loop", () => {
+        let code = `
+        for(var i = 0; i < 10; i++) {
+            print(i);
+        }
+        `
+        let codeToParse = () => {
+            createParsingTree(code)
+        }
+
+        expect(codeToParse).not.toThrow();
+
+        code = `
+        var i = 0;
+        for(i = 1; i < 10; i++) {
+            print(i);
+        }
+        `
+        codeToParse = () => {
+            createParsingTree(code)
+        }
+
+        expect(codeToParse).not.toThrow();
+
+        code = `
+        var i = 0;
+        for(; ;) {
+            print(i);
+        }
+        `
+        codeToParse = () => {
+            createParsingTree(code)
+        }
+
+        expect(codeToParse).not.toThrow();
+    })
+```
+As we can see, the foor loop has three expressions in the parens, first is to ininitalize the looping condition, second is checking the condition still apply or not, the third one is change the looping
+condition, then a block follow the for expression, run the test and make sure it fails.Now we add the grammar rule for the for loop as following:
+```js
+statement -> ...|forStmt
+forStmt -> FOR LEFT_PAREN for_init for_checking for_changing RIGHT_PAREN block
+for_init -> var_decl SEMICOLON| expressin SEMICOLN | SEMICOLON
+for_checking -> expression SEMICOLON | SEMICOLN
+for_changing -> expression  | EPSILON
+```
+pay attention to the grammar rule above, the loop_init, loop_checking and loop_changing can contain only one semicolon, and the loop changing can be empty, that's why we have a case that the condition
+of the for loop only contains two semicolons, let's see how to use code to implement the for loop parsing:
+
+```js
+ statement = (parent) => {
+    ....
+     //get for keyword then goto parsing for statement
+        token = this.matchTokens([Scanner.FOR])
+        if (token) {
+            this.advance()
+            this.forStmt(stmtNode)
+            parent.children.push(stmtNode)
+            return
+        }
+    ....
+}
+
+forStmt = (parent) => {
+        /*
+        forStmt -> FOR LEFT_PAREN for_init for_checking for_changing RIGHT_PAREN block
+        for_init -> var_decl SEMICOLON | expression SEMICOLON | SEMICOLON
+        for_checking -> expression SEMICOLON | SEMICOLON
+        for_changing -> expression SEMICOLON |SEMICOLON
+        */
+        const forStmtNode = this.createParseTreeNode(parent, "for")
+        parent.children.push(forStmtNode)
+
+        let token = this.matchTokens([Scanner.LEFT_PAREN])
+        if (!token) {
+            throw new Error("for loop missing left paren")
+        }
+        this.advance()
+
+        //check the initiliazer is only semicolon
+        token = this.matchTokens([Scanner.SEMICOLON])
+        if (!token) {
+            const forInitNode = this.createParseTreeNode(forStmtNode, "for_init")
+            forInitNode.attributes = {
+                name: "for_init"
+            }
+            forStmtNode.children.push(forInitNode)
+            token = this.matchTokens([Scanner.VAR])
+            if (token) {
+                this.varDecl(forInitNode)
+            } else {
+                this.expression(forInitNode)
+                token = this.matchTokens([Scanner.SEMICOLON])
+                if (!token) {
+                    throw new Error("for loop initializer misssing SEMICOLON")
+                }
+                this.advance()
+            }
+        } else {
+            this.advance()
+        }
+
+        //check loop checking is only a semicolon
+        token = this.matchTokens([Scanner.SEMICOLON])
+        if (!token) {
+            const forCheckingNode = this.createParseTreeNode(forStmtNode, "for_checking")
+            forCheckingNode.attributes = {
+                name: "for_checking"
+            }
+            forStmtNode.children.push(forCheckingNode)
+            this.expression(forCheckingNode)
+            token = this.matchTokens([Scanner.SEMICOLON])
+            if (!token) {
+                throw new Error("for loop checking misssing SEMICOLON")
+            }
+            this.advance()
+        } else {
+            this.advance()
+        }
+
+        //check there is for changing expression
+        token = this.matchTokens([Scanner.RIGHT_PAREN])
+        if (!token) {
+            const forChanging = this.createParseTreeNode(forStmtNode, "for_changing")
+            forChanging.attributes = {
+                name: "for_changing"
+            }
+            forStmtNode.children.push(forChanging)
+            this.expression(forChanging)
+            token = this.matchTokens([Scanner.RIGHT_PAREN])
+            if (!token) {
+                throw new Error("loop initializer missing semicolon")
+            }
+            this.advance()
+        } else {
+            this.advance()
+        }
+
+        this.parseBlock(forStmtNode)
+    }
+
+   addAcceptForNode = (parent, node) => {
+        switch (node.name) {
+        ....
+        case "for":
+                node.accept = (visitor) => {
+                    visitor.visitForNode(parent, node)
+                }
+                break
+            case "for_init":
+                node.accept = (visitor) => {
+                    visitor.visitForInitNode(parent, node)
+                }
+                break
+            case "for_checking":
+                node.accept = (visitor) => {
+                    visitor.visitForCheckingNode(parent, node)
+                }
+                break
+            case "for_changing":
+                node.accept = (visitor) => {
+                    visitor.visitForChangingNode(parent, node)
+                }
+                break
+          ....
+        }
+}
+```
+Since we add four new nodes, then we need to add the visitor methods for tree adjustor:
+```js
+visitForNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+
+    visitForInitNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+
+    visitForCheckingNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+
+    visitForChangingNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+```
+And we need to add visitor methods for intepreter:
+```js
+ visitForNode = (parent, node) => {
+        this.visitChildren(node)
+        this.attachEvalResult(parent, node)
+    }
+
+    visitForInitNode = (parent, node) => {
+        this.visitChildren(node)
+        this.attachEvalResult(parent, node)
+    }
+
+    visitForCheckingNode = (parent, node) => {
+        this.visitChildren(node)
+        this.attachEvalResult(parent, node)
+    }
+
+    visitForChangingNode = (parent, node) => {
+        this.visitChildren(node)
+        this.attachEvalResult(parent, node)
+    }
+```
+Now let's check the parsing tree by using the following command:
+```js
+recursiveparsetree for(var i = 0; i < 10; i = i+1) {print(i);}
+```
+Then we get the parsing tree as following:
+
+![截屏2024-06-03 13 42 23](https://github.com/wycl16514/dragonscript_control_statemenet/assets/7506958/95836d85-e471-4be9-a900-1d42601f60d1)
+
+Pay attention to the parsing tree aboved, the first child of the for node is for_init, the second is for_checking, the third is for_changing, and the forth is the block for the code of the for loop,
+we will use this info to do the evaluation. Runt the test again and make sure the new case can be passed.
