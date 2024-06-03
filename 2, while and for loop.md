@@ -394,9 +394,9 @@ visitForNode = (parent, node) => {
         while (true) {
             if (forChecking) {
                 forChecking.accept(this)
-            }
-            if (!this.isEvalToTrue(forChecking.evalRes)) {
-                break
+                if (!this.isEvalToTrue(forChecking.evalRes)) {
+                    break
+                }
             }
 
             forBlock.accept(this)
