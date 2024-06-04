@@ -612,4 +612,80 @@ export default class Intepreter {
     ...
 }
 ```
-After adding the aboved code, run the test again and make sure it passed.
+After adding the aboved code, run the test again and make sure it passed. Finnaly we need to ensure break or continue can only appear in the block for while and for, add the following test case:
+```js
+it("should only allow break or continue in the block of for or while", () => {
+        let code = `
+        var a = 1;
+        if (a > 0) {
+            break;
+        }
+        var b =2;
+        `
+        let codeToExecute = () => {
+            let root = createParsingTree(code)
+            let intepreter = new Intepreter()
+            root.accept(intepreter)
+        }
+        expect(codeToExecute).toThrow()
+
+        code = `
+        var a = 1;
+        if (a > 0) {
+            continue;
+        }
+        var b =2;
+        `
+        codeToExecute = () => {
+            let root = createParsingTree(code)
+            let intepreter = new Intepreter()
+            root.accept(intepreter)
+        }
+        expect(codeToExecute).toThrow()
+    })
+```
+Run the test and make sure it fails, Then let's add code intepreter.js to make it passed:
+```js
+
+constructor() {
+        this.runTime = new RunTime();
+        //flag for continue and break
+        this.isContinue = false
+        this.isBreak = false
+
+        this.inLoop = false
+    }
+
+    visitWhileNode = (parent, node) => {
+        this.inLoop = true
+        ...
+        this.inLoop = false
+        this.attachEvalResult(parent, node)
+    }
+
+    visitForNode = (parent, node) => {
+        this.inLoop = true
+        ...
+
+        this.inLoop = false
+    }
+
+visitDeclarationRecursiveNode = (parent, node) => {
+        for (const child of node.children) {
+            child.accept(this)
+            /*
+           if just execute break or continue, stop executing the 
+           folowing statements,but the break or continue can only
+           exeute for the block that is child of while or for
+           */
+            if (this.isContinue || this.isBreak) {
+                if (!this.inLoop) {
+                    throw new Error("break or continue can only happen in while or for loop")
+                }
+                break
+            }
+        }
+        this.attachEvalResult(parent, node)
+    }
+```
+After adding the above code, run the test again and make sure it passed.
