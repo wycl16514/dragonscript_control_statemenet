@@ -410,4 +410,206 @@ visitForNode = (parent, node) => {
         this.attachEvalResult(parent, node)
     }
 ```
-After adding above code, run the test again and make sure it passed.
+After adding above code, run the test again and make sure it passed. Now we have loop capability, and we need the capbility to break the loop that is we need break and continue statement, the parsing
+for this two statements are simple and we will goto its evaluation directly, add the following case:
+```js
+ it("should enable to break or continue from the loop", () => {
+        let code = `
+        for(var i = 0; i < 10; i=i+1) {
+            if (i < 7) {
+                {
+                    continue;
+                    if (i < 7) {
+                        print(101);
+                    }
+                    
+                }
+                print(200);
+            }
+            print(i);
+        }
+        `
+        let root = createParsingTree(code)
+        let intepreter = new Intepreter()
+        root.accept(intepreter)
+        let console = intepreter.runTime.console
+        expect(console.length).toEqual(3)
+        expect(console[0]).toEqual(7)
+        expect(console[1]).toEqual(8)
+        expect(console[2]).toEqual(9)
+
+        code = `
+           var i = 0;
+           while (i < 10) {
+               if(i >= 4) {
+                  {
+                    {
+                        break;
+                        print(101);
+                    }
+                  }
+               }
+               print(i);
+               i = i+1;
+           }
+        `
+        root = createParsingTree(code)
+        intepreter = new Intepreter()
+        root.accept(intepreter)
+        console = intepreter.runTime.console
+        expect(console.length).toEqual(4)
+        expect(console[0]).toEqual(0)
+        expect(console[1]).toEqual(1)
+        expect(console[2]).toEqual(2)
+        expect(console[3]).toEqual(3)
+    })
+```
+Run the test case and make sure it fails. Then we define token values for these two keywords in token.js:
+```js
+export default class Scanner {
+    ....
+    static CONTINUE = 49
+    static BREAK = 50
+
+    initKeywords = () => {
+        this.key_words = {
+        ....
+        "continue": Scanner.CONTINUE,
+        "break": Scanner.BREAK,
+        }
+    }
+
+```
+The grammar rule for break and continue is easy:
+statement-> ...|continueStmt|breakStmt
+continueStmt -> CONTINUE SEMICOLON
+breakStmt -> BREAK SEMICOLON
+Then we add code for parser according to the aboved grammar rule:
+```js
+statement = (parent) => {
+    ....
+    //check continue or break
+        token = this.matchTokens([Scanner.CONTINUE, Scanner.BREAK])
+        if (token) {
+            this.advance()
+            if (token.token === Scanner.CONTINUE) {
+                const continueNode = this.createParseTreeNode(stmtNode, "continue")
+                stmtNode.children.push(continueNode)
+            } else {
+                const breakNode = this.createParseTreeNode(stmtNode, "break")
+                stmtNode.children.push(breakNode)
+            }
+            token = this.matchTokens([Scanner.SEMICOLON])
+            if (!token) {
+                throw new Error("break or continue missing semicolon")
+            }
+            this.advance()
+            parent.children.push(stmtNode)
+            return
+        }
+    ...
+}
+
+ addAcceptForNode = (parent, node) => {
+        switch (node.name) {
+        ....
+         case "continue":
+                node.accept = (visitor) => {
+                    visitor.visitContinueNode(parent, node)
+                }
+                break
+            case "break":
+                node.accept = (visitor) => {
+                    visitor.visitBreakNode(parent, node)
+                }
+                break
+          ...
+        }
+}
+```
+Since we add new nodes, then we add its visitor method to tree adjustor:
+```js
+ visitContinueNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+
+    visitBreakNode = (parent, node) => {
+        this.visitChildren(node)
+    }
+```
+Then let's see its parsing tree by using command:
+```js
+recursiveparsetree for(var i = 0; i < 10; i=i+1){if(i<7){continue; print(100);}print(i);}
+```
+And we have the following parsing tree:
+
+![截屏2024-06-04 15 16 59](https://github.com/wycl16514/dragonscript_control_statemenet/assets/7506958/741b8cd4-ec87-40d6-9469-fa23b39501f3)
+
+Pay attention to the parsing tree, if the continue is exexuted, then any branches that are lower than the branch that contains the continue will not execute, and we can see each branch will have a 
+ancestor node with name decl_recursive, then we will handle continue or break at that node, we add two flags isBreak and isContine in intepreter, if the continue or break statement is executed, 
+we set the given flag, and at method of visitDeclarationRecursiveNode, we execute the child of the node one by one and then check whether isBreak or isContinue is setted, if it is, then we stop
+executing any following child.
+
+When we come to the for node or while node, we reset the isBreak and isContinue flags,and if the isBreak flag is set, then we break the execution loop, the code is as following:
+```js
+export default class Intepreter {
+    constructor() {
+        this.runTime = new RunTime();
+        //flag for continue and break
+        this.isContinue = false
+        this.isBreak = false
+    }
+    ...
+
+     visitForNode = (parent, node) => {
+     ....
+     while (true) {
+     ....
+     //if the break statement exeucted, stop the loop
+     const isBreak = this.isBreak
+     this.resetBreakContinue()
+     if (isBreak) {
+         break
+      }
+
+     }
+
+     visitWhileNode = (parent, node) => {
+        const condition = node.children[0]
+        const body = node.children[1]
+        while (true) {
+            condition.accept(this)
+            if (!this.isEvalToTrue(condition.evalRes)) {
+                break
+            }
+            body.accept(this)
+            node.evalRes = body.evalRes
+            //if the break statement exeucted, stop the loop
+            const isBreak = this.isBreak
+            this.resetBreakContinue()
+            if (isBreak) {
+                break
+            }
+        }
+
+        this.attachEvalResult(parent, node)
+    }
+
+     visitDeclarationRecursiveNode = (parent, node) => {
+        for (const child of node.children) {
+            child.accept(this)
+            /*
+           if just execute break or continue, stop executing the 
+           folowing statements,but the break or continue can only
+           exeute for the block that is child of while or for
+           */
+            if (this.isContinue || this.isBreak) {
+                break
+            }
+        }
+        this.attachEvalResult(parent, node)
+    }
+    ...
+}
+```
+After adding the aboved code, run the test again and make sure it passed.
